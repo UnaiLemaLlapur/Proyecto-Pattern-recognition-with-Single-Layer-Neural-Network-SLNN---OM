@@ -52,41 +52,59 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 function [nnout] = uo_nn_solve_st(nn,par)
-Xtr=[];ytr=[];wo=[];Lo=0;tr_acc=0;Xte=[];yte=[];te_acc=0;niter=0;tex=0;
-%
-% Training dataset generation
-%
+    Xtr=[];ytr=[];wo=[];Lo=0;tr_acc=0;Xte=[];yte=[];te_acc=0;niter=0;tex=0;
+    
+    % 1. Dataset generation (TR y TE se generan antes de optimizar)
+    [Xtr, ytr] = uo_nn_dataset(nn.tr_seed, nn.tr_p, nn.num_target, nn.tr_freq);
+    [Xte, yte] = uo_nn_dataset(nn.te_seed, nn.te_q, nn.num_target, 0.0);
+    
+    % 2. Optimization
+    w0 = zeros(size(Xtr, 1), 1); 
 
-%
-% Test dataset generation
-%
+    P.f = @(w) nn.L(w, Xtr, ytr);
+    P.g = @(w) nn.gL(w, Xtr, ytr);
+    P.h = @(w) eye(size(Xtr, 1));
+    
+    %
+    P.Xtr = Xtr; P.ytr = ytr;
+    P.Xte = Xte; P.yte = yte;
+    P.L = nn.L;  P.gL = nn.gL;
+    
+    %
+    par.almax = 1;
+    par.almin = 1e-10;
+    par.rho   = 0.5;
 
-%
-% Optimization
-%
-tic;
-
-tex = toc;
-%
-% Training accuracy
-%
-
-%
-% Test accuracy
-%
-
-%
-nnout.Xtr    = Xtr;
-nnout.ytr    = ytr;
-nnout.wo     = wo;
-nnout.Lo     = Lo;
-nnout.niter  = niter;
-nnout.tex    = tex;
-nnout.tr_acc = tr_acc;
-nnout.Xte    = Xte;
-nnout.yte    = yte;
-nnout.te_acc = te_acc;
-
+    %
+    par.Xtr = Xtr; par.ytr = ytr;
+    par.Xte = Xte; par.yte = yte;
+    par.sg.Xtr = Xtr; par.sg.ytr = ytr;
+    
+    tic;
+    % Llamamos a tu código
+    [sol, par_out] = uosol_UnaiLema(P, w0, par);
+    tex = toc;
+    
+    % Extraer resultados
+    wo = sol(end).x; 
+    niter = length(sol) - 1;
+    Lo = nn.L(wo, Xtr, ytr);
+    
+    % 3. Accuracies
+    tr_acc = nn.Acc(Xtr, ytr, wo);
+    te_acc = nn.Acc(Xte, yte, wo);
+    
+    % 
+    nnout.Xtr    = Xtr;
+    nnout.ytr    = ytr;
+    nnout.wo     = wo;
+    nnout.Lo     = Lo;
+    nnout.niter  = niter;
+    nnout.tex    = tex;
+    nnout.tr_acc = tr_acc;
+    nnout.Xte    = Xte;
+    nnout.yte    = yte;
+    nnout.te_acc = te_acc;
 end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % End Procedure uo_nn_solve
