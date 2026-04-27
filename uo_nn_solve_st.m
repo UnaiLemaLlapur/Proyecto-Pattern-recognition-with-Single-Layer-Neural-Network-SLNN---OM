@@ -81,8 +81,8 @@ function [nnout] = uo_nn_solve_st(nn,par)
     par.sg.Xtr = Xtr; par.sg.ytr = ytr;
     
     tic;
-    % Llamamos a tu código
-    [sol, par_out] = uosol_UnaiLema(P, w0, par);
+    % 
+    [sol, par_out] = uosol_st(P, w0, par);
     tex = toc;
     
     % Extraer resultados
