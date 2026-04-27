@@ -12,7 +12,7 @@
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [sol,par] = uosol_UnaiLema(P,x,par)
+function [sol,par] = uosol_st(P,x,par)
 
 %
 % Initializations
@@ -166,7 +166,7 @@ else
             al = fminbnd(@(alpha) f(x + alpha*d), 0, par.almax);
             ACout = "ELS";
         elseif par.iAC >= 1      % BLS.
-            [al,ACout] = uoBLS_UnaiLema(x,d,P,par);
+            [al,ACout] = uoBLS_st(x,d,P,par);
         end
         
         sol(k).x  = x;
@@ -187,5 +187,5 @@ sol(k).x = x;
 %[sol] = uosolLog(P,par,sol);
 
 end
-% [end] Function [uosol_UnaiLema] %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% [end] Function [uosol_st] %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
