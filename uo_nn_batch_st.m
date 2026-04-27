@@ -16,7 +16,7 @@ fprintf('[uo_nn_batch]  Starts\n');
 % Parameters
 %
 % NN model:
-nn.tr_seed = 123456; nn.te_seed = 789101; nn.sg_seed = 565544; % Seeds.
+nn.tr_seed = 77215326; nn.te_seed = 41014914; nn.sg_seed = 41015326; % Seeds.
 nn.tr_p = 25000; nn.te_q = nn.tr_p /10; nn.tr_freq = 0.5;      % Datasets 
 % Training
 par.epsG = 10^-2; par.maxiter = 100;                           % Stopping cond.
