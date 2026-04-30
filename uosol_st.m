@@ -15,28 +15,49 @@
 function [sol,par] = uosol_st(P,x,par)
 
 %
-% Initializations
+% Inicializaciones por defecto
+par_default.epsG = 1.0000e-06;
+par_default.maxiter = 500;
+par_default.isd = 1;
+par_default.iAC = 1;
+par_default.almax = 1;
+par_default.almin = 1.0000e-06;
+par_default.rho = 0.9000;
+par_default.c1 = 0.0100;
+par_default.c2 = 0.9000;
+par_default.log = 1;
+par_default.delta = 10^(-3);
+par_default.bls_seed = 0;
+
+fields = fieldnames(par_default);
+for k = 1:numel(fields)
+    f = fields{k};
+    if ~exist('par','var') %recorre todo par_default, es mejorable
+        par = par_default;
+    elseif ~isfield(par, f)
+        par.(f) = par_default.(f);
+    end
+end
 %
 n=size(x,1);
 f = P.f;
 g = P.g;
-h = P.h;
+
+
 k = 1;
 sol(k).x = x;
-if par.isd == 7
-    sol(k).Xtr = P.Xtr(:, 1:par.sg.m);
-    sol(k).ytr = P.ytr(:, 1:par.sg.m);
-    sol(k).idx = 1:par.sg.m;
-end
 ldescent = true;
+rng(par.bls_seed); %fija una semilla para las partes aleatorias (uoBLSNW32)
+%
 %
 % Algorithm
 %
+
 if par.isd == 7
     % SGM
     p = size(P.Xtr, 2);             % Columnas (muestras)
     m = par.sg.m;                   % Tamaño del minibatch
-    k_e = floor(p / m);             % Minibatches por época
+    k_e = ceil(p / m);             % Minibatches por época
     k_max_sg = par.sg.emax * k_e;   % Iteraciones máximas
     
     e = 0; s = 0; 
@@ -48,12 +69,12 @@ if par.isd == 7
     alpha_sg = 0.01 * alpha_0;
     k_SG_decay = floor(par.sg.be * k_max_sg);
     
-    rng(par.sg.seed);               % Semilla para la primera permutación aleatoria
+    rng(par.sg.seed);               % Semilla para la primera permutación aleatoria y que condiciona las siguientes
     
     while e <= par.sg.emax && s < par.sg.eworse
         P_perm = randperm(p);       % Permutación de índices
         
-        for i = 0:(k_e - 1)
+        for i = 0:(k_e - 1)         %por propiedad ceil(x -1) = ceil(x) -1
             % Seleccionar subconjunto (minibatch)
             idx_start = i * m + 1;
             idx_end = min((i + 1) * m, p);
@@ -74,14 +95,14 @@ if par.isd == 7
             
             % Guardar iteración
             sol(k_iter + 1).x = x;
-            sol(k_iter + 1).Xtr = X_S; 
-            sol(k_iter + 1).ytr = y_S; 
             sol(k_iter + 1).idx = S_idx;
             sol(k_iter + 1).g = -d; % Guardamos gradiente estocástico
             sol(k_iter + 1).ng = norm(d);
             sol(k_iter + 1).d = d;
             sol(k_iter + 1).al = alpha_k;
             sol(k_iter + 1).AC = "SGM";
+            sol(k_iter + 1).e = e + 1; %epoch actual
+            sol(k_iter + 1).minbatch_iter = i; %epoch actual
             
             % Actualizar pesos
             x = x + alpha_k * d;
@@ -106,86 +127,62 @@ if par.isd == 7
     k = k_iter + 1; % Sincronizar índice final
 
 else
-    % ========================================================
-    % GM, BFGS, NM, etc. (Tu código original modificado ligeramente)
-    % ========================================================
-    while norm(g(x)) > par.epsG && k < par.maxiter && (ldescent || par.isd == 4)
-        if par.isd == 1
-            % GM
-            d = -g(x);
-        elseif par.isd == 3
-            % BFGS
-            if k == 1
-                H = eye(n);
-            else
-                s_step = sol(k-1).al * sol(k-1).d;  
-                y_step = g(x) - sol(k-1).g;         
-                if y_step'*s_step > 1e-10
-                    rho = 1 / (y_step' * s_step);
-                    I = eye(n);
-                    H_prev = sol(k-1).H;
-                    H = (I - rho * s_step * y_step') * H_prev * (I - rho * y_step * s_step') + rho * (s_step * s_step');
-                else
-                    H = sol(k-1).H; 
-                end
-            end
-            d = -H * g(x);
-            sol(k).H = H;
-        elseif par.isd == 4
-            % NM 
-            sol(k).H = h(x);
-            d = -sol(k).H \ g(x);
-        elseif par.isd == 5
-            % MNM-SD 
-            [V, D] = eig(h(x)); 
-            lam = diag(D);
-            lam(lam < par.delta) = par.delta; 
-            B = V * diag(lam) * V';
-            sol(k).H = B;
-            d = -B \ g(x);
-        elseif par.isd == 6
-            % MNM-CMI
-            min_eig = min(real(eig(h(x))));
-            if min_eig >= par.delta
-                tau = 0;
-            else
-                tau = par.delta - min_eig;
-            end
-            B = h(x) + tau * eye(n);
-            sol(k).tau = tau;
-            sol(k).H = B;
-            d = -B \ g(x);
+    while norm(g(x)) > par.epsG & k < par.maxiter & (ldescent | par.isd == 4)
+    if par.isd == 1
+        % GM
+        d = -g(x);
+    elseif par.isd == 3
+        % BFGS
+        %
+        if k == 1
+            H = eye(size(x,1),size(x,1));
         end
-        ldescent = d'*g(x) < 0;
-        
-        % LS
-        if par.isd == 4 
-            al = 1;
-            ACout = "";
-        elseif par.iAC == 0
-            al = fminbnd(@(alpha) f(x + alpha*d), 0, par.almax);
-            ACout = "ELS";
-        elseif par.iAC >= 1      % BLS.
-            [al,ACout] = uoBLS_st(x,d,P,par);
-        end
-        
-        sol(k).x  = x;
-        sol(k).g  = g(x);
-        sol(k).ng = norm(g(x));
-        sol(k).d  = d;
-        sol(k).al = al;
-        sol(k).AC = ACout;
-        x = x + al*d; 
-        k = k + 1;
+        d = -H * g(x);
+        % Se añaden + cosas despues de BLS
+        sol(k).H = H;
+    %Omitimos los codigos de NM, MNM-SD, MNM-CMI porque no se usaran para
+    %el proyecto
     end
+    ldescent = d'*g(x) < 0;
+    % LS
+    %Omitimos los casos de Unit step length del NM y exact line search
+    %porque no son relevantes para el proyecto
+    if  par.iAC == 4     % BLS para SNN
+        [al,iout] = uoBLSNW32(f,g,x,d,par.almax,par.c1,par.c2);
+        if iout == 0
+            ACout = "SWC";
+        else
+            ACout = "";
+        end
+        sol(k).iout = iout;
+        par.almax = 2 * (f(x + al*d) - f(x)) / (transpose(g(x + al*d)) * d);
+    elseif par.iAC <= 3      % BLS.
+        [al,ACout] = uoBLS_st(x,d,P,par);
+    end
+    if par.isd == 3 %codigo added para BFGS
+        s = x + al*d - x;
+        y = g(x + al*d) - g(x);
+        rho_k = inv(transpose(y) * s);
+        H = (eye(size(x,1),size(x,1)) -rho_k * s * transpose(y)) * sol(k).H * (eye(size(x,1),size(x,1)) -rho_k * y * transpose(s)) + rho_k * s * transpose(s);%afegit
+    end
+    sol(k).x  = x;
+    sol(k).g  = g(x);
+    sol(k).ng = norm(g(x));
+    sol(k).d  = d;
+    sol(k).al = al;
+    sol(k).AC = ACout;
+    x = x + al*d; k=k+1;
+    end %............................................................ main loop
 end
-
-% Cerrar iteración final
-sol(k).x = x;
-
+sol(k).x  = x;
+sol(k).g  = g(x);
+sol(k).ng = norm(g(x));
+%
 % Iterations log
-%[sol] = uosolLog(P,par,sol);
+%
+if par.log == 1
+   [sol] = uosolLog(P,par,sol);
+end
 
 end
-% [end] Function [uosol_st] %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
+% [end] Function [uosol_st] %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

@@ -39,12 +39,16 @@
 %    Xtr : X^{TR}.
 %    ytr : y^{TR}.
 %     wo : w^*.
-%     Lo : {\tilde L}^*.
+%     Lo : L^*.
+%   ngLo : ||\nabla L^*||, isd <> 7
+%        : 0               otherwise.
 % tr_acc : Accuracy^{TR}.
 %    Xte : X^{TE}.
 %    yte : y^{TE}.
 % te_acc : Accuracy^{TE}.
 %  niter : total number of iterations.
+%  nepoc : total number of epochs, isd == 7
+%        : 0                       otherwise
 %    tex : total running time (see "tic" "toc" Matlab commands).
 %
 % Calls: uosol
@@ -52,59 +56,82 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 function [nnout] = uo_nn_solve_st(nn,par)
-    Xtr=[];ytr=[];wo=[];Lo=0;tr_acc=0;Xte=[];yte=[];te_acc=0;niter=0;tex=0;
-    
-    % 1. Dataset generation (TR y TE se generan antes de optimizar)
-    [Xtr, ytr] = uo_nn_dataset(nn.tr_seed, nn.tr_p, nn.num_target, nn.tr_freq);
-    [Xte, yte] = uo_nn_dataset(nn.te_seed, nn.te_q, nn.num_target, 0.0);
-    
-    % 2. Optimization
-    w0 = zeros(size(Xtr, 1), 1); 
+Xtr=[];ytr=[];wo=[];Lo=0;tr_acc=0;Xte=[];yte=[];te_acc=0;niter=0;tex=0;
+%
+% Training dataset generation
+[Xtr,ytr] = uo_nn_dataset(nn.tr_seed,nn.tr_p,nn.num_target,nn.tr_freq);
+%
 
-    P.f = @(w) nn.L(w, Xtr, ytr);
-    P.g = @(w) nn.gL(w, Xtr, ytr);
-    P.h = @(w) eye(size(Xtr, 1));
-    
-    %
-    P.Xtr = Xtr; P.ytr = ytr;
-    P.Xte = Xte; P.yte = yte;
-    P.L = nn.L;  P.gL = nn.gL;
-    
-    %
-    par.almax = 1;
-    par.almin = 1e-10;
-    par.rho   = 0.5;
+%
+% Test dataset generation
+[Xte,yte] = uo_nn_dataset(nn.te_seed,nn.te_q,nn.num_target,0.0); %ponemos freq a 0.0 para que la proporcion de digitos sea igual para cada numero
+%
 
-    %
-    par.Xtr = Xtr; par.ytr = ytr;
-    par.Xte = Xte; par.yte = yte;
-    par.sg.Xtr = Xtr; par.sg.ytr = ytr;
-    
-    tic;
-    % 
-    [sol, par_out] = uosol_st(P, w0, par);
-    tex = toc;
-    
-    % Extraer resultados
-    wo = sol(end).x; 
-    niter = length(sol) - 1;
-    Lo = nn.L(wo, Xtr, ytr);
-    
-    % 3. Accuracies
-    tr_acc = nn.Acc(Xtr, ytr, wo);
-    te_acc = nn.Acc(Xte, yte, wo);
-    
-    % 
-    nnout.Xtr    = Xtr;
-    nnout.ytr    = ytr;
-    nnout.wo     = wo;
-    nnout.Lo     = Lo;
-    nnout.niter  = niter;
-    nnout.tex    = tex;
-    nnout.tr_acc = tr_acc;
-    nnout.Xte    = Xte;
-    nnout.yte    = yte;
-    nnout.te_acc = te_acc;
+%
+% Optimization
+P.f = @(w) nn.L(w, Xtr, ytr);
+P.g = @(w) nn.gL(w, Xtr, ytr);
+P.Xtr = Xtr;
+P.ytr = ytr;
+P.Xte = Xte;
+P.yte = yte;
+P.L = nn.L;  P.gL = nn.gL; %para el caso par.isd = 7
+
+
+w1 = zeros(size(Xtr, 1), 1); 
+
+par.bls_seed = nn.sg_seed; %para fijar la parte aleatoria de uoBLSNW32
+par.almax = 1; %Importante porque se actualiza
+par.log = 0; %no muestra el log
+%
+tic;
+
+[sol, par] = uosol_st(P, w1, par); %w1 es x1
+
+tex = toc;
+
+%
+% Training accuracy
+tr_acc = nn.Acc(Xtr,ytr,sol(end).x);
+%
+
+%
+% Test accuracy
+%
+te_acc = nn.Acc(Xte,yte,sol(end).x);
+%
+
+
+%
+% Extraccion datos sol
+wo = sol(end).x;
+Lo = P.f(wo);
+niter = size(sol,2);
+if par.isd == 7
+    opt.etot = sol(end-1).e;
+end
+gLo = sol(end).g;
+%
+
+nnout.Xtr    = Xtr; % training dataset, X^TR
+nnout.ytr    = ytr; % Training dataset, y^TR
+nnout.wo     = wo;  % Optimal weights
+nnout.Lo     = Lo;  % Optimal mean loss with regul. 
+if par.isd == 7
+    nnout.niter   = opt.etot; % nre. epochs
+    nnout.nmbatch = niter;    % nre. of minibatch iterations
+    nnout.ngLo  = 0;          % ||gL*|| (void for the SGM)
+else
+    nnout.niter   = niter;    % nre. of iterations
+    nnout.nmbatch = 0;        % nre. of minibatch iter.
+    nnout.ngLo  = norm(gLo);  % ||gL*||
+end
+nnout.tex    = tex;           % Running time
+nnout.tr_acc = tr_acc;        % Training accuracy
+nnout.Xte    = Xte;           % Test dataset, X^TE
+nnout.yte    = yte;           % Test dataset, y^TE
+nnout.te_acc = te_acc;        % Test accuracy.
+
 end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % End Procedure uo_nn_solve

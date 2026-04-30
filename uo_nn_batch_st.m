@@ -16,18 +16,16 @@ fprintf('[uo_nn_batch]  Starts\n');
 % Parameters
 %
 % NN model:
-nn.tr_seed = 77215326; nn.te_seed = 41014914; nn.sg_seed = 41015326; % Seeds.
-nn.tr_p = 25000; nn.te_q = nn.tr_p /10; nn.tr_freq = 0.5;      % Datasets 
+nn.tr_seed = 77215326; nn.te_seed = 41014914; nn.sg_seed = 77214914; % Seeds.
+nn.tr_p = 5000; nn.te_q = nn.tr_p /10; nn.tr_freq = 0.5;       % Datasets 
 % Training
-par.epsG = 10^-2; par.maxiter = 100;                           % Stopping cond.
-par.epsG = 10^-3; par.maxiter = 500;                           % Stopping cond.
-par.iAC = 4; par.c1 = 0.01; par.c2 = 0.9;                      % Linesearch.
+par.epsG = 10^-3; par.maxiter = 100;                           % Stopping cond.
+par.iAC = 4; par.c1 = 0.1; par.c2 = 0.9;                       % Linesearch.
 par.sg.seed = nn.sg_seed; par.sg.al0 = 2; par.sg.be = 0.3;     % SGM
-par.sg.m = 10; par.sg.emax = 100; par.sg.eworse = 5;
-par.log = 1;  % =0, cancels call to [uosolLog] and reduces running time.
+par.sg.m = 10; par.sg.emax = par.maxiter; par.sg.eworse = 5;
 % Aux. functions
-sig    = @(X)   1./(1+exp(-X));
-y      = @(X,w) sig(w'*sig(X));
+sig    = @(Xds)   1./(1+exp(-Xds));
+y      = @(Xds,w) sig(w'*sig(Xds));
 nn.Acc = @(Xds,yds,wo) 100*sum(yds==round(y(Xds,wo)))/size(Xds,2);
 %
 % Runs
@@ -47,10 +45,11 @@ for num_target = [1:10]
             par.isd = isd;
             [nnout] = uo_nn_solve_st(nn,par);
             if iheader == 1
-                fprintf(fCSV,'num_target;      la; isd;  niter;     tex; tr_acc; te_acc;        L*;\n');
+                fprintf(fCSV,' n;   la; isd;  iter/epoc;  mbatch;       L*;    ngL*;     tex; tr_acc; te_acc;\n');
             end
             if ~isempty(nnout)
-                fprintf(fCSV,'         %1i; %7.4f;   %1i; %6i; %7.4f;  %5.1f;  %5.1f;  %8.2e;\n', mod(num_target,10), la, isd, nnout.niter, nnout.tex, nnout.tr_acc, nnout.te_acc, nnout.Lo);
+                fprintf(fCSV,' %1i; %4.2f;      %1i;     %3i;   %5i; %8.2e; %7.1e; %7.1e;  %5.1f;  %5.1f;\n', ...
+                    mod(num_target,10), la, isd, nnout.niter, nnout.nmbatch, nnout.Lo, nnout.ngLo, nnout.tex, nnout.tr_acc, nnout.te_acc);
             end
             iheader=0;
         end
@@ -59,3 +58,4 @@ end
 t2 = clock; total_t = etime(t2,t1);
 fprintf('[uo_nn_batch]  Stops, wall time = %6.1f s.\n', total_t); fclose(fCSV);
 diary off; fclose(fLOG);
+
