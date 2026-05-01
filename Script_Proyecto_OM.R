@@ -1,6 +1,7 @@
 library(dplyr)
 library(ggplot2)
 library(tidyr)
+library(ggbeeswarm)
 
 # Cargar los datos
 df <- read.csv("uo_nn_batch.csv", sep=";", header = TRUE, strip.white=TRUE)
@@ -152,8 +153,59 @@ ggsave(filename = "grafico_tiempo_ejecucion_Lmayor0.pdf",
        plot = grafica_tiempo_ejecucion_Lmayor0, 
        width = 10, height = 5, units = "in")
 
+
+
 #tamb se podría hacer uno para valroes de lambda concretos y uno general sin tener en cuenta lambda
 
+#tiempo de ejecución
+ggplot(datos_slnn %>% filter(lambda == 0), aes(x = method, y = tex, fill = method)) +
+  geom_boxplot(alpha = 0.8) +
+  scale_y_log10() +
+  theme_minimal() +
+  labs(title = "Velocidad Local: Tiempo de ejecución en función del Algoritmo para Lambda = 0",
+       x = "Algoritmo",
+       y = "Segundos [Escala Log10]",
+       fill = "Algoritmo")
+
+#Para todos los lambdas
+ggplot(datos_slnn, aes(x = method, y = tex, fill = method)) +
+  geom_boxplot(alpha = 0.8) +
+  facet_wrap(~ lambda, labeller = as_labeller(function(x) paste("lambda =", x))) +
+  scale_y_log10() +
+  theme_minimal() +
+  labs(title = "Velocidad Local: Tiempo de ejecución en función del Algoritmo y de Lambda",
+       x = "Algoritmo",
+       y = "Segundos [Escala Log10]",
+       fill = "Algoritmo")
+
+#num iteraciones
+ggplot(datos_slnn %>% filter(lambda == 0), aes(x = method, y = niter, fill = method)) +
+  geom_violin() +
+  geom_beeswarm(
+    size = 1.8,
+    alpha = 0.7,
+    priority = "density"
+  ) +
+  theme_minimal() +
+  labs(title = "Velocidad Local: Número de Iteraciones en función del Algoritmo para Lambda = 0",
+       x = "Algoritmo",
+       y = "Número de Iteraciones",
+       fill = "Algoritmo")
+
+#Para todos los lambdas
+ggplot(datos_slnn, aes(x = method, y = niter, fill = method)) +
+  geom_violin() +
+  geom_beeswarm(
+    size = 1.8,
+    alpha = 0.7,
+    priority = "density"
+  ) +
+  facet_wrap(~ lambda, labeller = as_labeller(function(x) paste("lambda =", x))) +
+  theme_minimal() +
+  labs(title = "Velocidad Local: Número de Iteraciones en función del Algoritmo y de Lambda",
+       x = "Algoritmo",
+       y = "Número de Iteraciones",
+       fill = "Algoritmo")
 # ---------------------------------------------------------
 # GRÁFICO 3: Precisión por Dígito (Lambda = 0) [Para apartado 1.c]
 # ---------------------------------------------------------
