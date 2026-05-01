@@ -62,10 +62,10 @@ ggplot(datos_slnn %>% filter(lambda == 0, method != "SGM"), aes(x = method, y = 
   geom_boxplot(alpha = 0.8) +
   scale_y_log10() + # Escala logarítmica vital para ver diferencias en L*
   theme_bw() +
-  labs(title = "Convergencia Global: Valor Final del gradiente de la Función Objetivo (L*) para Lambda = 0",
+  labs(title = "Convergencia Global: Valor Final de la Norma del gradiente de la Función Objetivo (L*) para Lambda = 0",
        subtitle = "Comparativa por algoritmo y nivel de regularización",
        x = "Algoritmo",
-       y = "Valor del gradiente de L* (escala logarítmica de 10)",
+       y = "Valor Norma del gradiente de L* (escala logarítmica de 10)",
        fill = "Algoritmo")
 
 
