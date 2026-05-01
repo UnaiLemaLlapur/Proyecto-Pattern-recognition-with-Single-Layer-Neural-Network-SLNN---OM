@@ -4,110 +4,162 @@ library(tidyr)
 
 # Cargar los datos
 df <- read.csv("uo_nn_batch.csv", sep=";", header = TRUE, strip.white=TRUE)
-datos_slnn <- df[, 1:10]
-# Renombrar columnas para evitar problemas con los espacios del CSV original
-colnames(datos_slnn) <- c("num_target", "la", "isd", "iter/epoc", "mbatch", "L_star", "ngL*", "tex", "tr_acc", "te_acc")
 
-# Transformaciones clave
-datos_clean <- datos_slnn %>%
+# Renombrar columnas para evitar problemas con los espacios del CSV original
+datos_slnn <- df %>% 
+  mutate(num_target = n,lambda =la, iter_epoc=iter.epoc,L_star = L., ngL_star =ngL.) %>%
+  select(num_target,lambda,isd,iter_epoc,mbatch,L_star,ngL_star,tex,tr_acc,te_acc) %>% 
   mutate(
     # Asignar nombres a los algoritmos
-    Method = case_when(
+    method = case_when(
       isd == 1 ~ "GM",
       isd == 3 ~ "QNM",
       isd == 7 ~ "SGM"
     ),
-    Method = factor(Method, levels = c("GM", "QNM", "SGM")),
-    
-    # Calcular el número real de iteraciones (SGM usa mbatch, los demás iter_epoc)
-    niter = ifelse(isd == 7, mbatch, `iter/epoc`),
-    
-    # Tiempo por iteración
+    method = factor(method, levels = c("GM", "QNM", "SGM")),
+    num_target = as.factor(num_target),
+    lambda = as.factor(lambda),
+    niter = case_when(
+      isd < 7 ~ iter_epoc,
+      isd >=7 ~ mbatch / iter_epoc,
+    ),
     tex_niter = tex / niter,
-    
-    # Convertir dígitos y lambdas a factores para las gráficas
-    Digit = as.factor(n),
-    Lambda = as.factor(la)
-  )
+    niter = as.integer(niter)) %>% 
+  select(num_target,lambda,method,niter,tex_niter,L_star,ngL_star,tex,tr_acc,te_acc)
 
-# Formato largo para comparar Training vs Test más fácilmente
-datos_long <- datos_clean %>%
-  pivot_longer(cols = c(tr_acc, te_acc), names_to = "Acc_Type", values_to = "Accuracy") %>%
-  mutate(Acc_Type = factor(Acc_Type, levels = c("tr_acc", "te_acc"), labels = c("Training", "Test")))
-
-
-# ==============================================================================
-# GENERACIÓN DE GRÁFICOS PARA EL REPORTE
-# ==============================================================================
+#mirar que hizo unai y arreglar gráficas
+#mejorar graficas de unai y cambiar cosas por mi dataset, add grafico de NAN's para QNM + graficos en funcion de digito
 
 # ---------------------------------------------------------
 # GRÁFICO 1: Convergencia Global (L*) [Para apartado 1.a y 2.a]
 # ---------------------------------------------------------
 # Usamos escala logarítmica (log10) porque los valores de L* ahora serán muy pequeños.
 # Separamos los 3 valores de Lambda en paneles (facet_wrap).
-(p_Lstar <- ggplot(datos_clean, aes(x = Method, y = L_star, fill = Method)) +
+
+ggplot(datos_slnn, aes(x = method, y = L_star, fill = method)) +
   geom_boxplot(alpha = 0.8) +
-  facet_wrap(~ Lambda, labeller = as_labeller(function(x) paste("Lambda =", x))) +
+  facet_wrap(~ lambda, labeller = as_labeller(function(x) paste("lambda =", x))) +
   scale_y_log10() + # Escala logarítmica vital para ver diferencias en L*
   theme_bw() +
   labs(title = "Convergencia Global: Valor Final de la Función Objetivo (L*)",
        subtitle = "Comparativa por algoritmo y nivel de regularización",
        x = "Algoritmo",
-       y = "Valor de L* (escala logarítmica)",
-       fill = "Algoritmo"))
+       y = "Valor de L* (escala logarítmica de 10)",
+       fill = "Algoritmo")
 
-#ggsave("Plot_1_Lstar_Global.pdf", p_Lstar, width = 10, height = 5)
 
 
 # ---------------------------------------------------------
 # GRÁFICO 2: Eficiencia Local (Tiempo por Iteración) [Para apartado 1.b]
 # ---------------------------------------------------------
 # También en escala logarítmica para poder ver la cajita del SGM.
-(p_eficiencia <- ggplot(datos_clean %>% filter(la == 0), aes(x = Method, y = tex_niter, fill = Method)) +
+
+ggplot(datos_slnn, aes(x = method, y = tex_niter, fill = method)) +
   geom_boxplot(alpha = 0.8) +
   scale_y_log10() +
+  facet_wrap(~ lambda, labeller = as_labeller(function(x) paste("lambda =", x))) +
   theme_minimal() +
-  labs(title = "Velocidad Local: Tiempo de ejecución por Iteración (Lambda = 0)",
+  labs(title = "Velocidad Local: Tiempo de ejecución por Iteración en función del Algoritmo y valor de Lambda",
        x = "Algoritmo",
-       y = "Segundos por Iteración (tex / niter) [Escala Log]",
-       fill = "Algoritmo"))
+       y = "Segundos por Iteración (tex / niter) [Escala Log10]",
+       fill = "Algoritmo")
 
-#ggsave("Plot_2_Eficiencia_L0.pdf", p_eficiencia, width = 8, height = 5)
-
+#tamb se podría hacer uno para valroes de lambda concretos y uno general sin tener en cuenta lambda
 
 # ---------------------------------------------------------
 # GRÁFICO 3: Precisión por Dígito (Lambda = 0) [Para apartado 1.c]
 # ---------------------------------------------------------
+datos_train_test <- datos_slnn %>%
+  pivot_longer(cols = c(tr_acc, te_acc), names_to = "acc_type", values_to = "accuracy") %>%
+  mutate(acc_type = factor(acc_type, levels = c("tr_acc", "te_acc"), labels = c("Training", "Test")))
+
 # Comparamos Training vs Test para cada número para ver si la red sufre con el 8 o el 9.
-(p_digitos <- ggplot(datos_long %>% filter(la == 0), aes(x = Digit, y = Accuracy, fill = Method)) +
+ggplot(datos_train_test %>% filter(lambda == 0,acc_type == "Training"), aes(x = num_target, y = accuracy, fill = method)) +
+   geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
+   #facet_wrap(~ acc_type) +
+   theme_bw() +
+   coord_cartesian(ylim = c(90, 100)) + # Hacemos "zoom" para no ver las barras desde 0
+   labs(title = "Dependencia del Dígito: Precisión sin Regularización (Lambda = 0) Training",
+        subtitle = "Evaluación de la dificultad intrínseca de cada número",
+        x = "Dígito Objetivo",
+        y = "Accuracy Train (%)",
+        fill= "Algoritmo") +
+  scale_fill_brewer(palette = "Accent")
+
+ggplot(datos_train_test %>% filter(lambda == 0,acc_type == "Test"), aes(x = num_target, y = accuracy, fill = method)) +
   geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
-  facet_wrap(~ Acc_Type) +
+  #facet_wrap(~ acc_type) +
   theme_bw() +
-  coord_cartesian(ylim = c(60, 100)) + # Hacemos "zoom" para no ver las barras desde 0
-  labs(title = "Dependencia del Dígito: Precisión sin Regularización (Lambda = 0)",
+  coord_cartesian(ylim = c(90, 100)) + # Hacemos "zoom" para no ver las barras desde 0
+  labs(title = "Dependencia del Dígito: Precisión sin Regularización (Lambda = 0) Test",
        subtitle = "Evaluación de la dificultad intrínseca de cada número",
        x = "Dígito Objetivo",
-       y = "Precisión / Accuracy (%)"))
-
-#ggsave("Plot_3_Digitos_L0.pdf", p_digitos, width = 12, height = 5)
+       y = "Accuracy Test(%)",
+       fill= "Algoritmo") +
+  scale_fill_brewer(palette = "Accent")
 
 
 # ---------------------------------------------------------
 # GRÁFICO 4: Efecto de Lambda en la Precisión [Para apartado 2.b]
 # ---------------------------------------------------------
 # Calculamos la media de todos los dígitos para ver el efecto general del sobreajuste
-datos_medias <- datos_long %>%
-  group_by(Method, Lambda, Acc_Type) %>%
-  summarise(Mean_Accuracy = mean(Accuracy, na.rm = TRUE), .groups = 'drop')
+datos_medias <- datos_train_test %>%
+  group_by(method, lambda, acc_type) %>%
+  summarise(mean_accuracy = mean(accuracy, na.rm = TRUE), .groups = 'drop')
 
-(p_lambda_acc <- ggplot(datos_medias, aes(x = Lambda, y = Mean_Accuracy, fill = Method)) +
+ggplot(datos_medias, aes(x = lambda, y = mean_accuracy, fill = method)) +
+    geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
+    facet_wrap(~ acc_type) +
+    theme_bw() +
+    coord_cartesian(ylim = c(70, 100)) +
+    labs(title = "Efecto de la Regularización en la Accuracy Media",
+         x = "Valor de Lambda",
+         y = "Accuracy Media (%)")
+
+# ---------------------------------------------------------
+# GRÁFICO 5: Mas Efectos de Lambda: NA's 
+# ---------------------------------------------------------
+
+datos_na <- datos_slnn %>% mutate(
+ has_na =case_when(
+   rowSums(is.na(datos_slnn)) > 0 ~ 1,
+   rowSums(is.na(datos_slnn)) <= 0 ~ 0
+  )
+) %>%
+  select(lambda,method,has_na) %>% 
+  group_by(method,lambda) %>% 
+  summarise(n_missing = sum(has_na))
+
+
+#Muestra cuantos missing values tienen los metodos en funcion de lambda
+ggplot(datos_na, aes(x = method, y = n_missing, fill = method)) +
   geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
-  facet_wrap(~ Acc_Type) +
+  facet_wrap(~ lambda, labeller = as_labeller(function(x) paste("lambda =", x))) +
   theme_bw() +
-  coord_cartesian(ylim = c(70, 100)) +
-  labs(title = "Efecto de la Regularización en la Precisión Media",
-       subtitle = "¿Ayuda Lambda > 0 a generalizar mejor (Test)?",
-       x = "Valor de Lambda",
-       y = "Precisión Media (%)"))
+  labs(title = "Efecto de Lambda en los Missing Values",
+       x = "Algoritmo",
+       y = "Número de Missing Values",
+       fill = "Algoritmo")
 
-#ggsave("Plot_4_Efecto_Lambda.pdf", p_lambda_acc, width = 10, height = 5)
+
+datos_na_numbers <- datos_slnn %>% mutate(
+  has_na =case_when(
+    rowSums(is.na(datos_slnn)) > 0 ~ 1,
+    rowSums(is.na(datos_slnn)) <= 0 ~ 0
+  )
+) %>% 
+  filter(method == "QNM",lambda != 0) %>%
+  select(lambda,num_target,has_na) %>% 
+  group_by(num_target,lambda) %>% 
+  summarise(n_missing = sum(has_na))
+  
+  
+#Muestra cuantos missing values tienen los numeros en funcion de lambda
+ggplot(datos_na_numbers, aes(x = num_target, y = n_missing, fill = num_target)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
+  facet_wrap(~ lambda, labeller = as_labeller(function(x) paste("lambda =", x))) +
+  theme_bw() +
+  labs(title = "Efecto de Lambda en los Missing Values",
+       x = "Algoritmo",
+       y = "Número de Missing Values",
+       fill = "Números")
